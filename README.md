@@ -1,5 +1,9 @@
 # Distraction Reducer Plugin
 
+
+https://github.com/user-attachments/assets/ce4eda2a-d9e0-4904-ab9a-bddcd7dfadff
+
+
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/car_role)
 
 # Spec Bar Utilities
