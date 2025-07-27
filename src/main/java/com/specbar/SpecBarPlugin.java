@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -48,9 +49,8 @@ public class SpecBarPlugin extends Plugin
     
     // Widget caching for performance
     private Widget cachedSpecBarWidget = null;
-    private int cachedSpecBarWidgetId = -1;
     private long lastWidgetSearchTime = 0;
-    private static final long WIDGET_CACHE_DURATION_MS = 10000; // Cache for 10 seconds (better performance)
+    private static final long WIDGET_CACHE_DURATION_MS = 10000; // Cache for 10 seconds
 
     @Override
     protected void startUp() throws Exception
@@ -196,117 +196,22 @@ public class SpecBarPlugin extends Plugin
         
         // Check if we have a valid cached widget
         if (cachedSpecBarWidget != null && 
-            cachedSpecBarWidgetId != -1 && 
             currentTime - lastWidgetSearchTime < WIDGET_CACHE_DURATION_MS)
         {
             // Verify cached widget is still valid
-            Widget widget = client.getWidget(cachedSpecBarWidgetId);
-            if (widget != null && !widget.isHidden())
+            if (!cachedSpecBarWidget.isHidden())
             {
-                return widget;
+                return cachedSpecBarWidget;
             }
         }
         
-        // Cache expired or invalid, search for widget
-        Widget foundWidget = findSpecialAttackWidgetOptimized();
-        if (foundWidget != null)
+        // Cache expired or invalid, get the special attack widget using proper constants
+        Widget specBarWidget = client.getWidget(InterfaceID.COMBAT, 42); // Special attack bar component
+        if (specBarWidget != null && !specBarWidget.isHidden())
         {
-            cachedSpecBarWidget = foundWidget;
-            cachedSpecBarWidgetId = foundWidget.getId();
+            cachedSpecBarWidget = specBarWidget;
             lastWidgetSearchTime = currentTime;
-            
-            // Widget cached successfully (logging removed for performance)
-        }
-        
-        return foundWidget;
-    }
-    
-    private Widget findSpecialAttackWidgetOptimized()
-    {
-        // First, try the known working widget ID directly
-        Widget widget = client.getWidget(593, 42);
-        if (widget != null && !widget.isHidden())
-        {
-            String text = widget.getText();
-            if (text != null && (text.contains("Special Attack") || text.contains("%")))
-            {
-                return widget;
-            }
-        }
-        
-        // Fallback to other common IDs (without logging spam)
-        int[] commonWidgetIds = {
-            593 << 16 | 24,  // Original guess
-            593 << 16 | 25,  // Alternatives
-            593 << 16 | 26,
-            593 << 16 | 27,
-            593 << 16 | 30,
-            593 << 16 | 31,
-            593 << 16 | 32,
-            593 << 16 | 41,  // Near the working one
-            593 << 16 | 43,  // Near the working one
-        };
-        
-        for (int widgetId : commonWidgetIds)
-        {
-            widget = client.getWidget(widgetId);
-            if (widget != null && !widget.isHidden())
-            {
-                String text = widget.getText();
-                if (text != null && (text.contains("Special Attack") || text.contains("%")))
-                {
-                    return widget;
-                }
-            }
-        }
-        
-        return null;
-    }
-
-    private Widget findSpecialAttackWidget()
-    {
-        // Try common widget IDs for special attack bar
-        int[] possibleWidgetIds = {
-            593 << 16 | 24,  // Combat tab special attack (original guess)
-            593 << 16 | 25,  // Alternative combat tab
-            593 << 16 | 26,  // Alternative combat tab
-            593 << 16 | 27,  // Alternative combat tab
-            160 << 16 | 31,  // Combat interface special attack
-            160 << 16 | 32,  // Combat interface special attack
-            160 << 16 | 33,  // Combat interface special attack
-            593 << 16 | 30,  // Combat options special attack
-            593 << 16 | 31,  // Combat options special attack
-            593 << 16 | 32,  // Combat options special attack
-        };
-        
-        for (int widgetId : possibleWidgetIds)
-        {
-            Widget widget = client.getWidget(widgetId);
-            if (widget != null && !widget.isHidden())
-            {
-                // Check if this widget looks like a special attack bar
-                String text = widget.getText();
-                if (text != null && (text.contains("Special Attack") || text.contains("%")))
-                {
-                    log.info("Found special attack widget at ID: {} with text: {}", widgetId, text);
-                    return widget;
-                }
-                
-                // Check child widgets
-                Widget[] children = widget.getChildren();
-                if (children != null)
-                {
-                    for (Widget child : children)
-                    {
-                        if (child != null && child.getText() != null && 
-                            (child.getText().contains("Special Attack") || child.getText().contains("%")))
-                        {
-                            log.info("Found special attack child widget at parent ID: {} child text: {}", widgetId, child.getText());
-                            return child;
-                        }
-                    }
-                }
-            }
+            return specBarWidget;
         }
         
         return null;

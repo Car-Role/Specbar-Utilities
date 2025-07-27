@@ -1,6 +1,7 @@
 package com.specbar;
 
 import net.runelite.api.Client;
+import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
@@ -26,8 +27,8 @@ public class SpecBarOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        // Use direct widget access for performance (593:42 is the known working widget)
-        Widget specBarWidget = client.getWidget(593, 42);
+        // Use proper RuneLite constants instead of hardcoded widget ID
+        Widget specBarWidget = client.getWidget(InterfaceID.COMBAT, 42);
         if (specBarWidget == null || specBarWidget.isHidden())
         {
             return null;
