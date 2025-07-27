@@ -5,9 +5,9 @@ https://github.com/user-attachments/assets/ce4eda2a-d9e0-4904-ab9a-bddcd7dfadff
 
 # Spec Bar Utilities
 
-A RuneLite plugin that enhances the usability of the special attack bar in Old School RuneScape by providing clear visual feedback for hover and click states. Knowing exactly when you clicked the spec bar, without a next tick delay.
+Enhances the Specbar to accurately display the clickbox, instantly show if your mouse is hovering over the specbar, and show if you clicked the specbar. 
 
-There is naturally a 1 tick delay to give the user feedback on if they clicked the specbar or not, this plugin fixes that
+Normally you have to wait until the next tick to know if you clicked the specbar, this plugin fixes that
 
 ## Configuration
 
