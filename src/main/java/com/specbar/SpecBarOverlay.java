@@ -1,7 +1,7 @@
 package com.specbar;
 
 import net.runelite.api.Client;
-import net.runelite.api.widgets.InterfaceID;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
@@ -27,14 +27,13 @@ public class SpecBarOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        // Use proper RuneLite constants instead of hardcoded widget ID
-        Widget specBarWidget = client.getWidget(InterfaceID.COMBAT, 42);
-        if (specBarWidget == null || specBarWidget.isHidden())
+        Widget energyWidget = client.getWidget(InterfaceID.CombatInterface.CURRENTENERGY_COLOUR);
+        if (energyWidget == null || energyWidget.isHidden())
         {
             return null;
         }
 
-        Rectangle bounds = specBarWidget.getBounds();
+        Rectangle bounds = energyWidget.getBounds();
         if (bounds == null)
         {
             return null;
