@@ -10,7 +10,7 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GraphicChanged;
 import net.runelite.api.events.MenuOptionClicked;
-import net.runelite.api.widgets.InterfaceID;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -282,8 +282,8 @@ public class SpecBarPlugin extends Plugin
             }
         }
         
-        // Cache expired or invalid, get the special attack widget using proper constants
-        Widget specBarWidget = client.getWidget(InterfaceID.COMBAT, 42); // Special attack bar component
+        // Cache expired or invalid
+        Widget specBarWidget = client.getWidget(InterfaceID.CombatInterface.SP_ATTACKBAR); // Special attack bar component
         if (specBarWidget != null && !specBarWidget.isHidden())
         {
             cachedSpecBarWidget = specBarWidget;
