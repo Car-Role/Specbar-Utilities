@@ -14,12 +14,18 @@ public class SpecBarOverlay extends Overlay
 {
     private final Client client;
     private final SpecBarPlugin plugin;
+    private final SpecBarConfig config;
+
+    // Spec bar bounds relative to the combat interface, remembered while the bar is
+    // visible so the "no spec weapon" border lands exactly where the bar would be.
+    private Rectangle lastBarOffset;
 
     @Inject
-    private SpecBarOverlay(Client client, SpecBarPlugin plugin)
+    private SpecBarOverlay(Client client, SpecBarPlugin plugin, SpecBarConfig config)
     {
         this.client = client;
         this.plugin = plugin;
+        this.config = config;
         setPosition(OverlayPosition.DYNAMIC);
         setLayer(OverlayLayer.ABOVE_WIDGETS);
     }
@@ -28,8 +34,15 @@ public class SpecBarOverlay extends Overlay
     public Dimension render(Graphics2D graphics)
     {
         Widget energyWidget = client.getWidget(InterfaceID.CombatInterface.CURRENTENERGY_COLOUR);
-        if (energyWidget == null || energyWidget.isHidden())
+        if (energyWidget == null)
         {
+            return null;
+        }
+
+        Widget combatTab = client.getWidget(InterfaceID.CombatInterface.UNIVERSE);
+        if (energyWidget.isHidden())
+        {
+            renderBorderWithoutSpecWeapon(graphics, energyWidget, combatTab);
             return null;
         }
 
@@ -38,6 +51,7 @@ public class SpecBarOverlay extends Overlay
         {
             return null;
         }
+        rememberBarOffset(bounds, combatTab);
 
         // Check if any effect should be rendered
         boolean hasClickEffect = plugin.isClicked();
@@ -70,6 +84,67 @@ public class SpecBarOverlay extends Overlay
 
         g2d.dispose();
         return null;
+    }
+
+    private void rememberBarOffset(Rectangle bounds, Widget combatTab)
+    {
+        if (combatTab == null || combatTab.isHidden())
+        {
+            return;
+        }
+        Rectangle tab = combatTab.getBounds();
+        lastBarOffset = new Rectangle(bounds.x - tab.x, bounds.y - tab.y, bounds.width, bounds.height);
+    }
+
+    private void renderBorderWithoutSpecWeapon(Graphics2D graphics, Widget energyWidget, Widget combatTab)
+    {
+        if (!config.showBorderWithoutSpecWeapon() || combatTab == null || combatTab.isHidden())
+        {
+            return;
+        }
+
+        Rectangle bounds = barBoundsWhileHidden(energyWidget, combatTab);
+        if (bounds == null || bounds.isEmpty())
+        {
+            return;
+        }
+
+        Graphics2D g2d = (Graphics2D) graphics.create();
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        renderEffect(g2d, bounds, plugin.getIdleAreaColor(), plugin.getIdleBorderColor());
+        g2d.dispose();
+    }
+
+    private Rectangle barBoundsWhileHidden(Widget energyWidget, Widget combatTab)
+    {
+        Rectangle tab = combatTab.getBounds();
+        if (lastBarOffset != null)
+        {
+            return new Rectangle(tab.x + lastBarOffset.x, tab.y + lastBarOffset.y,
+                    lastBarOffset.width, lastBarOffset.height);
+        }
+
+        // No spec weapon equipped yet this session: resolve the bar's position from its
+        // layout offsets up to the first visible ancestor.
+        int x = 0;
+        int y = 0;
+        Widget w = energyWidget;
+        while (w != null && w.isHidden())
+        {
+            x += w.getRelativeX();
+            y += w.getRelativeY();
+            w = w.getParent();
+        }
+        if (w == null)
+        {
+            return null;
+        }
+        net.runelite.api.Point origin = w.getCanvasLocation();
+        if (origin == null)
+        {
+            return null;
+        }
+        return new Rectangle(origin.getX() + x, origin.getY() + y, energyWidget.getWidth(), energyWidget.getHeight());
     }
 
     private void renderEffect(Graphics2D g2d, Rectangle bounds, 

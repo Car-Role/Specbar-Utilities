@@ -106,6 +106,18 @@ public interface SpecBarConfig extends Config
         return false;
     }
 
+    @ConfigItem(
+        keyName = "showBorderWithoutSpecWeapon",
+        name = "Border Without Spec Weapon",
+        description = "In the Combat Options tab, draw the idle border where the special attack bar sits even when the equipped weapon has no special attack",
+        section = visualEffectsSection,
+        position = 4
+    )
+    default boolean showBorderWithoutSpecWeapon()
+    {
+        return false;
+    }
+
     // Hover State Settings
     @Alpha
     @ConfigItem(
