@@ -4,13 +4,11 @@ import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
-import net.runelite.api.Player;
-import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClientTick;
-import net.runelite.api.events.GraphicChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -46,15 +44,17 @@ public class SpecBarPlugin extends Plugin
     private SpecBarOverlay specBarOverlay;
 
     private boolean isHovering = false;
-    private boolean isClicked = false;
+    private boolean mouseOverSpecBar = false;
     private int tickCounter = 0;
-    private int lastSpecialAttackEnergy = -1; // Track spec energy to detect usage
     private long lastClickClearTime = 0; // Track when click state was cleared
     private static final long HOVER_SUPPRESS_DURATION_MS = 300; // Suppress hover for 300ms after click clear
-    
-    // Enhanced special attack detection
-    private long lastSpecClickTime = 0; // Track when spec bar was clicked
-    private static final long SPEC_DETECTION_WINDOW_MS = 3000; // 3 second window to detect spec usage after click
+
+    // Spec armed state comes from the game (varp SA_ATTACK). A click shows the
+    // expected state immediately until the server confirms it or the window expires.
+    private boolean specArmed = false;
+    private boolean predictedArmed = false;
+    private long predictionExpiresAt = 0;
+    private static final long PREDICTION_WINDOW_MS = 1200; // ~2 game ticks
     
     // Widget caching for performance
     private Widget cachedSpecBarWidget = null;
@@ -73,23 +73,26 @@ public class SpecBarPlugin extends Plugin
     {
         overlayManager.remove(specBarOverlay);
         isHovering = false;
-        isClicked = false;
+        mouseOverSpecBar = false;
+        specArmed = false;
+        predictionExpiresAt = 0;
         log.info("Spec Bar Utilities stopped!");
     }
 
     @Subscribe
     public void onClientTick(ClientTick event)
     {
-        // Track special attack energy to detect when spec is used
-        int currentSpecEnergy = client.getVarpValue(301); // Varp 301 is special attack energy
-        
-        // If we're in clicked state and spec energy decreased, the spec was used
-        if (isClicked && lastSpecialAttackEnergy != -1 && currentSpecEnergy < lastSpecialAttackEnergy)
+        boolean wasShowingClick = isClickStateActive();
+        boolean armed = client.getVarpValue(VarPlayerID.SA_ATTACK) == 1;
+        if (armed != specArmed)
         {
-            clearClickState(); // Remove click effect when spec is actually used
+            specArmed = armed;
+            predictionExpiresAt = 0; // server state changed, it wins over the prediction
         }
-        
-        lastSpecialAttackEnergy = currentSpecEnergy;
+        if (wasShowingClick && !isClickStateActive())
+        {
+            lastClickClearTime = System.currentTimeMillis();
+        }
         
         // Throttle hover detection to every 3rd tick for performance (still responsive at ~50fps)
         tickCounter++;
@@ -116,21 +119,23 @@ public class SpecBarPlugin extends Plugin
             if (bounds != null)
             {
                 net.runelite.api.Point mousePos = client.getMouseCanvasPosition();
-                boolean mouseInBounds = bounds.contains(mousePos.getX(), mousePos.getY());
+                mouseOverSpecBar = bounds.contains(mousePos.getX(), mousePos.getY());
                 
                 // Suppress hover effect for a short time after click state is cleared
                 long currentTime = System.currentTimeMillis();
                 boolean hoverSuppressed = (currentTime - lastClickClearTime) < HOVER_SUPPRESS_DURATION_MS;
                 
-                isHovering = mouseInBounds && !hoverSuppressed;
+                isHovering = mouseOverSpecBar && !hoverSuppressed;
             }
             else
             {
+                mouseOverSpecBar = false;
                 isHovering = false;
             }
         }
         else
         {
+            mouseOverSpecBar = false;
             isHovering = false;
         }
     }
@@ -141,21 +146,14 @@ public class SpecBarPlugin extends Plugin
         // Optimized click detection with minimal string operations
         String menuTarget = event.getMenuTarget();
         
-        // Fast path: check if we're hovering and any relevant click happens
-        if (isHovering)
+        // Fast path: mouse is over the bar and a relevant click happens.
+        // Uses the raw mouse position so clicks during hover suppression still count.
+        if (mouseOverSpecBar)
         {
             String menuOption = event.getMenuOption();
             if (menuOption != null && !menuOption.equals("Walk here") && !menuOption.equals("Examine"))
             {
-                // If already clicked, instantly destroy the clicked box
-                if (isClicked)
-                {
-                    clearClickState();
-                }
-                else
-                {
-                    triggerClickState();
-                }
+                predictToggle();
                 return;
             }
         }
@@ -169,59 +167,9 @@ public class SpecBarPlugin extends Plugin
                 String menuOption = event.getMenuOption();
                 if (menuOption != null && (menuOption.equals("Use") || menuOption.equals("Activate")))
                 {
-                    triggerClickState();
+                    predictToggle();
                 }
             }
-        }
-    }
-    
-    @Subscribe
-    public void onAnimationChanged(AnimationChanged event)
-    {
-        // Only process player animations
-        if (!(event.getActor() instanceof Player))
-        {
-            return;
-        }
-        
-        Player player = (Player) event.getActor();
-        
-        // Only process local player
-        if (player != client.getLocalPlayer())
-        {
-            return;
-        }
-        
-        // If we're in clicked state and within detection window, check for special attack animations
-        if (isClicked && isWithinSpecDetectionWindow())
-        {
-            int animationId = player.getAnimation();
-            
-            // Check if this is a special attack animation
-            if (isSpecialAttackAnimation(animationId))
-            {
-                // Special attack animation detected - clear the click state
-                clearClickState();
-                log.debug("Special attack animation detected: {}", animationId);
-            }
-        }
-    }
-    
-    @Subscribe
-    public void onGraphicChanged(GraphicChanged event)
-    {
-        // Only process local player graphics
-        if (event.getActor() != client.getLocalPlayer())
-        {
-            return;
-        }
-        
-        // If we're in clicked state and within detection window, any graphic change might indicate spec usage
-        if (isClicked && isWithinSpecDetectionWindow())
-        {
-            // For now, we'll rely primarily on animation detection
-            // Graphics can be added later with proper IDs if needed
-            log.debug("Graphic changed during spec detection window");
         }
     }
     
@@ -235,35 +183,11 @@ public class SpecBarPlugin extends Plugin
         }
         
         // Check for the "not enough power" message when in clicked state
-        if (isClicked && event.getMessage().equals("You don't have enough power left."))
+        if (event.getMessage().equals("You don't have enough power left."))
         {
-            // Failed special attack attempt - clear the click state immediately
-            clearClickState();
+            // Failed special attack attempt - drop the prediction and show the real state
+            predictionExpiresAt = 0;
             log.debug("Special attack failed - not enough power");
-        }
-    }
-
-    private void updateSpecBarState()
-    {
-        // Use cached widget detection for performance
-        Widget specBarWidget = getCachedSpecialAttackWidget();
-        if (specBarWidget == null || specBarWidget.isHidden())
-        {
-            isHovering = false;
-            return;
-        }
-
-        net.runelite.api.Point mousePos = client.getMouseCanvasPosition();
-        Rectangle specBarBounds = specBarWidget.getBounds();
-        
-        if (mousePos != null && specBarBounds != null)
-        {
-            Point awtMousePos = new Point(mousePos.getX(), mousePos.getY());
-            isHovering = specBarBounds.contains(awtMousePos);
-        }
-        else
-        {
-            isHovering = false;
         }
     }
     
@@ -294,56 +218,26 @@ public class SpecBarPlugin extends Plugin
         return null;
     }
     
-    private boolean isWithinSpecDetectionWindow()
+    private void predictToggle()
     {
-        return (System.currentTimeMillis() - lastSpecClickTime) < SPEC_DETECTION_WINDOW_MS;
-    }
-    
-    private boolean isSpecialAttackAnimation(int animationId)
-    {
-        // Verified animation IDs from RuneLite source code
-        // These are the actual special attack animations, not regular skilling animations
-        switch (animationId)
+        long now = System.currentTimeMillis();
+        boolean next = !resolveClickState(specArmed, predictedArmed, predictionExpiresAt, now);
+        if (!next)
         {
-            // Dragon skilling tool special attacks (boost animations)
-            case 2876: // Dragon axe special attack (stat boost)
-            case 8347: // Dragon pickaxe special attack (stat boost)
-            case 1167: // Dragon harpoon special attack (stat boost)
-            
-            // Infernal tool special attacks (same as dragon variants)
-            case 2117: // Infernal axe special attack (verified from AnimationID.WOODCUTTING_INFERNAL)
-            case 8348: // Infernal pickaxe special attack
-            
-            // Crystal tool special attacks
-            case 8324: // Crystal axe special attack (verified from AnimationID.WOODCUTTING_CRYSTAL)
-            case 8789: // Crystal pickaxe special attack
-            case 8790: // Crystal harpoon special attack
-            
-            // Felling axe variants (2H axes with special attacks)
-            case 10071: // Dragon felling axe special attack
-            case 10072: // Crystal felling axe special attack
-            case 10073: // Crystal felling axe (inactive) special attack
-            case 10074: // 3rd age felling axe special attack
-            
-
-                return true;
-            default:
-                return false;
+            lastClickClearTime = now; // Hover effect will be suppressed for HOVER_SUPPRESS_DURATION_MS
         }
+        predictedArmed = next;
+        predictionExpiresAt = now + PREDICTION_WINDOW_MS;
     }
 
-    private void triggerClickState()
+    private boolean isClickStateActive()
     {
-        isClicked = true;
-        lastSpecClickTime = System.currentTimeMillis();
-        // Click state will persist until spec is used (tracked by multiple methods)
+        return resolveClickState(specArmed, predictedArmed, predictionExpiresAt, System.currentTimeMillis());
     }
-    
-    private void clearClickState()
+
+    static boolean resolveClickState(boolean serverArmed, boolean predicted, long predictionExpiresAt, long now)
     {
-        isClicked = false;
-        lastClickClearTime = System.currentTimeMillis();
-        // Hover effect will be suppressed for HOVER_SUPPRESS_DURATION_MS
+        return now < predictionExpiresAt ? predicted : serverArmed;
     }
 
     public boolean isHovering()
@@ -353,7 +247,7 @@ public class SpecBarPlugin extends Plugin
 
     public boolean isClicked()
     {
-        return isClicked && config.enableClickEffect();
+        return isClickStateActive() && config.enableClickEffect();
     }
 
     // Hover state getters (integrated color+opacity)

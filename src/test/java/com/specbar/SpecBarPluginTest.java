@@ -77,4 +77,16 @@ public class SpecBarPluginTest
         assertFalse("Plugin should have a description", descriptor.description().isEmpty());
         assertTrue("Plugin should have tags", descriptor.tags().length > 0);
     }
+
+    @Test
+    public void testClickStateFollowsPredictionThenServer()
+    {
+        long now = 1000;
+        // Fresh click prediction wins while the server hasn't confirmed yet
+        assertTrue(SpecBarPlugin.resolveClickState(false, true, now + 500, now));
+        assertFalse(SpecBarPlugin.resolveClickState(true, false, now + 500, now));
+        // Once the prediction expires, the server's spec state is shown
+        assertTrue(SpecBarPlugin.resolveClickState(true, false, now, now));
+        assertFalse(SpecBarPlugin.resolveClickState(false, true, now - 1, now));
+    }
 }
